@@ -15,8 +15,8 @@ use tokio::time::{Duration, timeout};
 
 use crate::connection::Connection;
 use crate::connection::port::ConnectionType;
-use crate::core::device::DeviceInfo;
-use crate::core::storage::{PartitionKind, StorageType};
+use crate::core::devinfo::DeviceInfo;
+use crate::core::storage::{PartitionKind, Storage, StorageType};
 use crate::da::xflash::cmds::*;
 use crate::da::xflash::exts::{boot_extensions, read32_ext, write32_ext};
 use crate::da::{DA, DAProtocol};
@@ -27,7 +27,7 @@ use crate::exploit::carbonara::Carbonara;
 pub struct XFlash {
     pub conn: Connection,
     pub da: DA,
-    pub dev_info: Arc<Mutex<DeviceInfo>>,
+    pub dev_info: DeviceInfo,
     using_exts: bool,
 }
 
@@ -314,43 +314,11 @@ impl DAProtocol for XFlash {
     }
 
     async fn get_storage_type(&mut self) -> StorageType {
-        if let Ok(dev_info) = self.dev_info.try_lock() {
-            if let Some(storage) = &dev_info.storage {
-                return storage.kind();
-            }
-        }
-
-        let detected = detect_storage(self).await;
-
-        if let Some(storage) = detected {
-            let kind = storage.as_ref().kind();
-            if let Ok(mut dev_info) = self.dev_info.try_lock() {
-                dev_info.storage = Some(storage);
-            }
-            return kind;
-        }
-
-        StorageType::Unknown
+        self.get_or_detect_storage().await.map_or(StorageType::Unknown, |s| s.kind())
     }
 
-    async fn get_storage(&mut self) -> Option<Arc<dyn crate::core::storage::Storage>> {
-        {
-            let dev_info = self.dev_info.lock().await;
-            if let Some(storage) = &dev_info.storage {
-                return Some(storage.clone());
-            }
-        }
-
-        let detected = detect_storage(self).await;
-
-        if let Some(storage) = detected {
-            let mut dev_info = self.dev_info.lock().await;
-            dev_info.storage = Some(storage.clone());
-
-            return Some(storage);
-        }
-
-        None
+    async fn get_storage(&mut self) -> Option<Arc<dyn Storage>> {
+        self.get_or_detect_storage().await
     }
 }
 
@@ -360,7 +328,7 @@ impl XFlash {
         self.send(&cmd_bytes[..], DataType::ProtocolFlow as u32).await
     }
 
-    pub fn new(conn: Connection, da: DA, dev_info: Arc<Mutex<DeviceInfo>>) -> Self {
+    pub fn new(conn: Connection, da: DA, dev_info: DeviceInfo) -> Self {
         XFlash { conn, da, dev_info, using_exts: false }
     }
 
@@ -497,5 +465,19 @@ impl XFlash {
         info!("Booting DA extensions...");
         self.using_exts = boot_extensions(self).await?;
         Ok(true)
+    }
+
+    // This is an internal helper, do not use it directly
+    async fn get_or_detect_storage(&mut self) -> Option<Arc<dyn Storage>> {
+        if let Some(storage) = self.dev_info.storage().await {
+            return Some(storage);
+        }
+
+        if let Some(storage) = detect_storage(self).await {
+            self.dev_info.set_storage(storage.clone()).await;
+            return Some(storage);
+        }
+
+        None
     }
 }
