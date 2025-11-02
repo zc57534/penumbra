@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hex::encode;
-use penumbra::core::device::DeviceInfo;
+use penumbra::core::devinfo::{DevInfoData, DeviceInfo};
 use penumbra::core::seccfg::LockFlag;
-use penumbra::{Device, find_mtk_port};
+use penumbra::{Device, DeviceBuilder, find_mtk_port};
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -49,11 +49,15 @@ enum DeviceAction {
 pub struct DevicePage {
     menu: SelectableList,
     actions: Vec<DeviceAction>,
-    device: Option<Arc<Mutex<Device<'static>>>>,
+    device: Option<Arc<Mutex<Device>>>,
     status: DeviceStatus,
     status_message: Option<(String, Style)>,
     last_poll: Instant,
     device_info: Option<DeviceInfo>,
+    // This is used only in render, since render is not async, and we can't await inside it.
+    devinfo_data: Option<DevInfoData>,
+    // device_event_tx: watch::Sender<Option<DeviceEvent>>,
+    // device_event_rx: watch::Receiver<Option<DeviceEvent>>,
 }
 
 impl DevicePage {
@@ -86,6 +90,7 @@ impl DevicePage {
             status_message: None,
             last_poll: Instant::now(),
             device_info: None,
+            devinfo_data: None,
         }
     }
 
@@ -93,35 +98,45 @@ impl DevicePage {
         if self.status == DeviceStatus::DAReady || matches!(self.status, DeviceStatus::Error(_)) {
             return Ok(());
         }
-        if self.status == DeviceStatus::WaitingForDevice
-            && self.last_poll.elapsed() > Duration::from_millis(500)
-        {
-            self.last_poll = Instant::now();
-            let ports = find_mtk_port().await;
-            if let Some(port) = ports {
-                self.status = DeviceStatus::Initializing;
 
-                let da_data: Vec<u8> = ctx
-                    .loader()
-                    .map(|loader| loader.file().da_raw_data.as_slice().to_vec())
-                    .ok_or_else(|| DeviceStatus::Error("No DA loader in context".to_string()))?;
-
-                let mut dev = Device::init(port, da_data)
-                    .await
-                    .map_err(|e| DeviceStatus::Error(format!("Device init failed: {e}")))?;
-
-                dev.enter_da_mode()
-                    .await
-                    .map_err(|e| DeviceStatus::Error(format!("Failed DA mode: {e}")))?;
-
-                if let Some(arc_mutex) = dev.dev_info.as_ref() {
-                    let guard = arc_mutex.lock().await;
-                    self.device_info = Some(DeviceInfo::clone(&guard));
-                }
-                self.device = Some(Arc::new(Mutex::new(dev)));
-                self.status = DeviceStatus::DAReady;
-            }
+        if self.status == DeviceStatus::Initializing {
+            return Ok(());
         }
+
+        if self.status == DeviceStatus::WaitingForDevice
+            && self.last_poll.elapsed() < Duration::from_millis(500)
+        {
+            return Ok(());
+        }
+
+        self.last_poll = Instant::now();
+
+        let Some(port) = find_mtk_port().await else {
+            return Ok(());
+        };
+
+        self.status = DeviceStatus::Initializing;
+
+        let da_data: Vec<u8> = ctx
+            .loader()
+            .map(|loader| loader.file().da_raw_data.as_slice().to_vec())
+            .ok_or_else(|| DeviceStatus::Error("No DA loader in context".to_string()))?;
+
+        let mut dev = DeviceBuilder::default()
+            .with_da_data(da_data)
+            .with_mtk_port(port)
+            .build()
+            .map_err(|e| DeviceStatus::Error(format!("Device init failed: {e}")))?;
+
+        dev.init().await.map_err(|e| DeviceStatus::Error(format!("Device init failed: {e}")))?;
+        dev.enter_da_mode()
+            .await
+            .map_err(|e| DeviceStatus::Error(format!("Failed to enter DA mode: {e}")))?;
+
+        self.status = DeviceStatus::DAReady;
+        self.device_info = Some(dev.dev_info.clone());
+        self.devinfo_data = Some(dev.dev_info.get_data().await);
+        self.device = Some(Arc::new(Mutex::new(dev)));
         Ok(())
     }
 
@@ -177,7 +192,7 @@ impl Page for DevicePage {
     fn render(&mut self, frame: &mut Frame<'_>, _ctx: &mut AppCtx) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(10), Constraint::Length(6), Constraint::Min(5)])
+            .constraints([Constraint::Length(5), Constraint::Length(8), Constraint::Min(5)])
             .split(frame.area());
 
         let (status_line, style) = match &self.status {
@@ -212,11 +227,16 @@ impl Page for DevicePage {
             layout[0],
         );
 
-        let info_lines = match &self.device_info {
-            Some(info) => vec![
-                format!("SoC ID: {}", encode(&info.soc_id)),
-                format!("MeID: {}", encode(&info.meid)),
-            ],
+        let info_lines = match &self.devinfo_data {
+            Some(info) => {
+                vec![
+                    format!("SoC ID: {}", encode(&info.soc_id)),
+                    format!("MeID: {}", encode(&info.meid)),
+                    format!("SBC: {}", (info.target_config & 0x1 != 0)),
+                    format!("SLA: {}", (info.target_config & 0x2 != 0)),
+                    format!("DAA: {}", (info.target_config & 0x4 != 0)),
+                ]
+            }
             None => vec!["No device info available".to_string()],
         };
 
@@ -243,6 +263,12 @@ impl Page for DevicePage {
     async fn update(&mut self, ctx: &mut AppCtx) {
         if let Err(e) = self.poll_device(ctx).await {
             self.status = e;
+        }
+        if self.last_poll.elapsed() > Duration::from_secs(5) {
+            self.devinfo_data = match &self.device_info {
+                Some(info) => Some(info.get_data().await),
+                None => None,
+            }
         }
     }
 }
