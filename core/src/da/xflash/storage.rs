@@ -9,12 +9,15 @@ use log::debug;
 use crate::core::storage::Storage;
 use crate::core::storage::emmc::EmmcStorage;
 use crate::core::storage::ufs::UfsStorage;
+use crate::da::DAProtocol;
 use crate::da::xflash::{Cmd, XFlash};
 
 // TODO: Avoid repeated logic
 pub async fn detect_storage(xflash: &mut XFlash) -> Option<Arc<dyn Storage>> {
     let emmc_response = xflash.devctrl(Cmd::GetEmmcInfo, None).await;
+    let _ = xflash.get_status().await;
     let ufs_response = xflash.devctrl(Cmd::GetUfsInfo, None).await;
+    let _ = xflash.get_status().await;
 
     if let Ok(resp) = emmc_response {
         if resp.iter().all(|&b| b == 0) == false {
