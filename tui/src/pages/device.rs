@@ -110,7 +110,7 @@ impl DevicePage {
     }
 
     fn poll_device(&mut self, ctx: &mut AppCtx) {
-        if self.is_polling || self.last_poll.elapsed() < Duration::from_millis(500) {
+        if self.status != DeviceStatus::WaitingForDevice || self.is_polling {
             return;
         }
 
@@ -192,6 +192,10 @@ impl Page for DevicePage {
                 let action = self.actions[self.menu.selected_index().unwrap_or(2)];
                 match action {
                     DeviceAction::UnlockBootloader | DeviceAction::LockBootloader => {
+                        if self.device.is_none() {
+                            return;
+                        }
+
                         let (label, flag) = match action {
                             DeviceAction::UnlockBootloader => ("Unlock", LockFlag::Unlock),
                             DeviceAction::LockBootloader => ("Lock", LockFlag::Lock),
@@ -308,7 +312,7 @@ impl Page for DevicePage {
             }
         }
 
-        if self.status == DeviceStatus::WaitingForDevice {
+        if self.status == DeviceStatus::WaitingForDevice && self.device.is_none() {
             self.poll_device(ctx);
         }
 
