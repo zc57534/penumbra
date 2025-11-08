@@ -289,11 +289,21 @@ async fn get_packet_length(xflash: &mut XFlash) -> Result<(usize, usize)> {
 }
 
 async fn get_write_packet_length(xflash: &mut XFlash) -> Result<usize> {
+    if xflash.read_packet_length.is_some() {
+        return Ok(xflash.read_packet_length.unwrap());
+    }
+
     let (write_len, _) = get_packet_length(xflash).await?;
+    xflash.write_packet_length = Some(write_len);
     Ok(write_len)
 }
 
 async fn _get_read_packet_length(xflash: &mut XFlash) -> Result<usize> {
+    if xflash.read_packet_length.is_some() {
+        return Ok(xflash.read_packet_length.unwrap());
+    }
+
     let (_, read_len) = get_packet_length(xflash).await?;
+    xflash.read_packet_length = Some(read_len);
     Ok(read_len)
 }

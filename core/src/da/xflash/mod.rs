@@ -29,6 +29,8 @@ pub struct XFlash {
     pub da: DA,
     pub dev_info: DeviceInfo,
     using_exts: bool,
+    read_packet_length: Option<usize>,
+    write_packet_length: Option<usize>,
 }
 
 #[async_trait::async_trait]
@@ -164,7 +166,7 @@ impl DAProtocol for XFlash {
         self.conn.port.write_all(&hdr).await?;
 
         let mut pos = 0;
-        let max_chunk_size = 0x80000;
+        let max_chunk_size = self.write_packet_length.unwrap_or(0x80000);
 
         while pos < data.len() {
             let end = data.len().min(pos + max_chunk_size);
