@@ -4,6 +4,8 @@
 */
 use std::sync::Arc;
 
+use tokio::io::{AsyncRead, AsyncWrite};
+
 use crate::connection::Connection;
 use crate::connection::port::ConnectionType;
 use crate::core::storage::{PartitionKind, Storage, StorageType};
@@ -25,18 +27,25 @@ pub trait DAProtocol: Send {
         size: usize,
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
-    ) -> Result<Vec<u8>>;
+        writer: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> Result<()>;
 
     async fn write_flash(
         &mut self,
         addr: u64,
         size: usize,
-        data: &[u8],
+        reader: &mut (dyn AsyncRead + Unpin + Send),
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
     ) -> Result<()>;
 
-    async fn download(&mut self, part_name: String, data: &[u8]) -> Result<()>;
+    async fn download(
+        &mut self,
+        part_name: String,
+        size: usize,
+        reader: &mut (dyn AsyncRead + Unpin + Send),
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<()>;
 
     // Memory
     async fn read32(&mut self, addr: u32) -> Result<u32>;

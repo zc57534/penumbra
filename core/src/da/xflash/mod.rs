@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use log::{debug, error, info, warn};
 use storage::detect_storage;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
@@ -250,23 +251,30 @@ impl DAProtocol for XFlash {
         size: usize,
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
-    ) -> Result<Vec<u8>> {
-        flash::read_flash(self, addr, size, section, progress).await
+        writer: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> Result<()> {
+        flash::read_flash(self, addr, size, section, progress, writer).await
     }
 
     async fn write_flash(
         &mut self,
         addr: u64,
         size: usize,
-        data: &[u8],
+        reader: &mut (dyn AsyncRead + Unpin + Send),
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
     ) -> Result<()> {
-        flash::write_flash(self, addr, size, data, section, progress).await
+        flash::write_flash(self, addr, size, reader, section, progress).await
     }
 
-    async fn download(&mut self, part_name: String, data: &[u8]) -> Result<()> {
-        flash::download(self, part_name, data).await
+    async fn download(
+        &mut self,
+        part_name: String,
+        size: usize,
+        reader: &mut (dyn AsyncRead + Unpin + Send),
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<()> {
+        flash::download(self, part_name, size, reader, progress).await
     }
 
     async fn get_usb_speed(&mut self) -> Result<u32> {
@@ -331,7 +339,14 @@ impl XFlash {
     }
 
     pub fn new(conn: Connection, da: DA, dev_info: DeviceInfo) -> Self {
-        XFlash { conn, da, dev_info, using_exts: false }
+        XFlash {
+            conn,
+            da,
+            dev_info,
+            using_exts: false,
+            read_packet_length: None,
+            write_packet_length: None,
+        }
     }
 
     async fn devctrl(&mut self, cmd: Cmd, param: Option<&[u8]>) -> Result<Vec<u8>> {

@@ -2,9 +2,11 @@
     SPDX-License-Identifier: AGPL-3.0-or-later
     SPDX-FileCopyrightText: 2025 Shomy
 */
+use std::io::Cursor;
 use std::time::Duration;
 
 use log::{error, info};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::timeout;
 
 use crate::connection::Connection;
@@ -306,10 +308,15 @@ impl Device {
         let user_section = storage.get_user_part();
 
         let mut progress = |_read: usize, _total: usize| {};
-        let pgpt_data = match protocol.read_flash(0x0, 0x8000, user_section, &mut progress).await {
-            Ok(data) => data,
-            Err(_) => return Vec::new(),
-        };
+        let mut pgpt_data = Vec::new();
+        {
+            let mut cursor = Cursor::new(&mut pgpt_data);
+            if (protocol.read_flash(0x0, 0x8000, user_section, &mut progress, &mut cursor).await)
+                .is_err()
+            {
+                return Vec::new();
+            }
+        }
 
         let partitions = match parse_gpt(&pgpt_data, storage_type) {
             Ok(p) => p,
@@ -328,7 +335,8 @@ impl Device {
         &mut self,
         name: &str,
         progress: &mut (dyn FnMut(usize, usize) + Send),
-    ) -> Result<Vec<u8>> {
+        writer: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> Result<()> {
         self.ensure_da_mode().await?;
 
         let part = self
@@ -346,7 +354,7 @@ impl Device {
         let section = storage.get_user_part();
 
         let protocol = self.protocol.as_mut().unwrap();
-        protocol.read_flash(part.address, part.size, section, progress).await
+        protocol.read_flash(part.address, part.size, section, progress, writer).await
     }
 
     /// Writes data to a specified partition on the device.
@@ -355,7 +363,7 @@ impl Device {
     pub async fn write_partition(
         &mut self,
         name: &str,
-        data: &[u8],
+        reader: &mut (dyn AsyncRead + Unpin + Send),
         progress: &mut (dyn FnMut(usize, usize) + Send),
     ) -> Result<()> {
         self.ensure_da_mode().await?;
@@ -366,16 +374,6 @@ impl Device {
             .await
             .ok_or_else(|| Error::penumbra(format!("Partition '{}' not found", name)))?;
 
-        // Not needed since write_flash automatically truncates data to partition size.
-        // but we keep it for letting user know if they are trying to write too much data.
-        if data.len() > part.size {
-            return Err(Error::penumbra(format!(
-                "Data size {} exceeds partition size {}",
-                data.len(),
-                part.size
-            )));
-        }
-
         let storage = self
             .dev_info
             .storage()
@@ -385,7 +383,7 @@ impl Device {
         let section = storage.get_user_part();
 
         let protocol = self.protocol.as_mut().unwrap();
-        protocol.write_flash(part.address, part.size, data, section, progress).await
+        protocol.write_flash(part.address, part.size, reader, section, progress).await
     }
 
     /// Reads data from a specified offset and size on the device.
@@ -414,11 +412,12 @@ impl Device {
         size: usize,
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
-    ) -> Result<Vec<u8>> {
+        writer: &mut (dyn AsyncWrite + Unpin + Send),
+    ) -> Result<()> {
         self.ensure_da_mode().await?;
 
         let protocol = self.protocol.as_mut().unwrap();
-        protocol.read_flash(address, size, section, progress).await
+        protocol.read_flash(address, size, section, progress, writer).await
     }
 
     /// Writes data to a specified offset and size on the device.
@@ -452,14 +451,14 @@ impl Device {
         &mut self,
         address: u64,
         size: usize,
-        data: &[u8],
+        reader: &mut (dyn AsyncRead + Unpin + Send),
         section: PartitionKind,
         progress: &mut (dyn FnMut(usize, usize) + Send),
     ) -> Result<()> {
         self.ensure_da_mode().await?;
 
         let protocol = self.protocol.as_mut().unwrap();
-        protocol.write_flash(address, size, data, section, progress).await
+        protocol.write_flash(address, size, reader, section, progress).await
     }
 
     /// Like `write_partition`, but instead of writing using offsets and sizes from GPT,
@@ -481,27 +480,34 @@ impl Device {
     /// let firmware_data = std::fs::read("logo.bin").expect("Failed to read firmware");
     /// device.download("logo", &firmware_data).await?;
     /// ```
-    pub async fn download(&mut self, partition: &str, data: &[u8]) -> Result<()> {
+    pub async fn download(
+        &mut self,
+        partition: &str,
+        size: usize,
+        reader: &mut (dyn AsyncRead + Unpin + Send),
+        progress: &mut (dyn FnMut(usize, usize) + Send),
+    ) -> Result<()> {
         self.ensure_da_mode().await?;
 
         let protocol = self.protocol.as_mut().unwrap();
-        protocol.download(partition.to_string(), data).await
+        protocol.download(partition.to_string(), size, reader, progress).await
     }
 
     pub async fn set_seccfg_lock_state(&mut self, lock_state: LockFlag) -> Option<Vec<u8>> {
         // Ensure DA mode first; this will populate partitions and storage
         self.ensure_da_mode().await.ok()?;
 
-        // Use a no-op progress callback
         let mut progress = |_read: usize, _total: usize| {};
 
         // TODO: Dynamically determine SEJ base (maybe through preloader)
         let sej_base = 0x1000A000;
 
-        // Read the current seccfg partition
-        let seccfg_raw = self.read_partition("seccfg", &mut progress).await.ok()?;
+        let mut seccfg_raw = Vec::new();
+        {
+            let mut cursor = Cursor::new(&mut seccfg_raw);
+            self.read_partition("seccfg", &mut progress, &mut cursor).await.ok()?;
+        }
 
-        // Compute the new SECCFG
         let new_seccfg = {
             let mut crypto_config = CryptoConfig::new(sej_base, self);
             let mut sej = SEJCrypto::new(&mut crypto_config);
@@ -510,8 +516,10 @@ impl Device {
             seccfg.create(&mut sej, lock_state).await
         };
 
-        // Write the updated seccfg back
-        self.write_partition("seccfg", &new_seccfg, &mut progress).await.ok()?;
+        {
+            let mut reader = Cursor::new(&new_seccfg);
+            self.write_partition("seccfg", &mut reader, &mut progress).await.ok()?;
+        }
 
         Some(new_seccfg)
     }
