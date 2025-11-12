@@ -3,26 +3,33 @@
     SPDX-FileCopyrightText: 2025 Shomy
 */
 mod app;
+mod cli;
 mod components;
+mod error;
+mod logger;
 mod pages;
-use std::fs::File;
-use std::io::Result;
 
+use anyhow::Result;
 use app::App;
-use env_logger::Builder;
+use clap::Parser;
+use cli::{CliArgs, run_cli};
+use logger::init_logger;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let log_file = File::create("app.log").expect("Failed to create log file");
+    let args = CliArgs::parse();
 
-    Builder::new()
-        .parse_default_env()
-        .write_style(env_logger::WriteStyle::Always)
-        .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .init();
+    let cli_mode = args.cli || args.command.is_some();
+    let tui_mode = !cli_mode;
+
+    init_logger(tui_mode, args.verbose);
+
+    if cli_mode {
+        return run_cli(&args).await;
+    }
 
     let mut terminal = ratatui::init();
-    let mut app = App::new();
+    let mut app = App::new(&args);
 
     let app_result = app.run(&mut terminal).await;
 

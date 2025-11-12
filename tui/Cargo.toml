@@ -2,6 +2,10 @@
 name = "antumbra"
 version = "0.1.0"
 edition = "2024"
+authors = ["Shomy"]
+license = "AGPL-3.0-or-later"
+description = "A TUI and CLI for interacting with MediaTek based devices."
+repository = "https://github.com/shomykohai/penumbra"
 
 [dependencies]
 ratatui = "0.29.0"
@@ -10,7 +14,7 @@ env_logger = "0.11.8"
 crossterm = "0.29.0"
 ratatui-explorer = "0.2.1"
 async-trait = "0.1.89"
-tokio = {version="1.47.1", features = ["full"]}
+tokio = {version="1.47.1", features = ["macros", "rt-multi-thread"]}
 tokio-serial = "5.4.5"
 futures = "0.3.31"
 log = "0.4.28"
@@ -18,7 +22,21 @@ hex = "0.4.3"
 strum_macros = "0.27.2"
 strum = "0.27.2"
 derive_builder = "0.20.2"
+clap = { version = "4.5.51", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+indicatif = { version = "0.18.2", features = ["tokio"] }
+anyhow = "1.0.100"
+colored = "3.0.0"
 
 [[bin]]
 name = "antumbra"
 path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false

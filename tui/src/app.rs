@@ -2,14 +2,16 @@
     SPDX-License-Identifier: AGPL-3.0-or-later
     SPDX-FileCopyrightText: 2025 Shomy
 */
-use std::io::Result;
+use std::fs::read;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use anyhow::Result;
 use penumbra::da::DAFile;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{DefaultTerminal, Frame};
 
+use crate::cli::CliArgs;
 use crate::components::dialog::{Dialog, DialogBuilder};
 use crate::pages::{DevicePage, Page, WelcomePage};
 
@@ -88,8 +90,20 @@ impl AppCtx {
 }
 
 impl App {
-    pub fn new() -> App {
-        App { current_page: Box::new(WelcomePage::new()), context: AppCtx::default() }
+    pub fn new(args: &CliArgs) -> App {
+        let mut ctx = AppCtx::default();
+
+        if let Some(da_path) = &args.da_file {
+            match read(da_path) {
+                Ok(raw_data) => match DAFile::parse_da(&raw_data) {
+                    Ok(file) => ctx.set_loader(da_path.clone(), file),
+                    Err(_) => {}
+                },
+                Err(_) => {}
+            }
+        }
+
+        App { current_page: Box::new(WelcomePage::new()), context: ctx }
     }
 
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
