@@ -7,6 +7,7 @@ mod macros;
 mod cmds;
 mod exts;
 pub mod flash;
+mod patch;
 mod storage;
 use std::sync::Arc;
 
@@ -22,7 +23,7 @@ use crate::core::devinfo::DeviceInfo;
 use crate::core::storage::{PartitionKind, Storage, StorageType};
 use crate::da::xflash::cmds::*;
 use crate::da::xflash::exts::{boot_extensions, read32_ext, write32_ext};
-use crate::da::{DA, DAProtocol};
+use crate::da::{DA, DAEntryRegion, DAProtocol};
 use crate::error::{Error, Result, XFlashError};
 use crate::exploit::Exploit;
 use crate::exploit::carbonara::Carbonara;
@@ -253,6 +254,18 @@ impl DAProtocol for XFlash {
 
     async fn get_storage(&mut self) -> Option<Arc<dyn Storage>> {
         self.get_or_detect_storage().await
+    }
+
+    fn patch_da(&mut self) -> Option<DA> {
+        patch::patch_da(self).ok()
+    }
+
+    fn patch_da1(&mut self) -> Option<DAEntryRegion> {
+        patch::patch_da1(self).ok()
+    }
+
+    fn patch_da2(&mut self) -> Option<DAEntryRegion> {
+        patch::patch_da2(self).ok()
     }
 }
 

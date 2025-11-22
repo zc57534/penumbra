@@ -9,6 +9,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::connection::Connection;
 use crate::connection::port::ConnectionType;
 use crate::core::storage::{PartitionKind, Storage, StorageType};
+use crate::da::{DA, DAEntryRegion};
 use crate::error::Result;
 
 #[async_trait::async_trait]
@@ -60,4 +61,10 @@ pub trait DAProtocol: Send {
 
     async fn get_storage(&mut self) -> Option<Arc<dyn Storage>>;
     async fn get_storage_type(&mut self) -> StorageType;
+
+    // DA Patching utils. These *must* be protocol specific, as different protocols
+    // have different DA implementations
+    fn patch_da(&mut self) -> Option<DA>;
+    fn patch_da1(&mut self) -> Option<DAEntryRegion>;
+    fn patch_da2(&mut self) -> Option<DAEntryRegion>;
 }
