@@ -46,6 +46,7 @@ mtk_commands! {
     Write(WriteArgs),
     Read(ReadArgs),
     Seccfg(SeccfgArgs),
+    Pgpt(PgptArgs),
 }
 
 #[async_trait]
