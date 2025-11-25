@@ -5,7 +5,10 @@
 mod backend;
 mod command;
 pub mod port;
+use std::time::Duration;
+
 use log::{debug, error, info};
+use tokio::time::timeout;
 
 use crate::connection::command::Command;
 use crate::connection::port::{ConnectionType, MTKPort};
@@ -166,7 +169,16 @@ impl Connection {
         self.echo(&[Command::GetSocId as u8], 1).await?;
 
         let mut length_bytes = [0u8; 4];
-        self.port.read_exact(&mut length_bytes).await?;
+
+        let read_result =
+            timeout(Duration::from_millis(500), self.port.read_exact(&mut length_bytes)).await;
+
+        let length_bytes = match read_result {
+            Ok(Ok(_)) => length_bytes,
+            Ok(Err(e)) => return Err(e.into()), // I/O error
+            Err(_) => return Ok(vec![]),        // Timeout -> no SocId available
+        };
+
         let length = u32::from_be_bytes(length_bytes) as usize;
 
         let mut soc_id = vec![0u8; length];
@@ -188,7 +200,16 @@ impl Connection {
         self.echo(&[Command::GetMeId as u8], 1).await?;
 
         let mut length_bytes = [0u8; 4];
-        self.port.read_exact(&mut length_bytes).await?;
+
+        let read_result =
+            timeout(Duration::from_millis(500), self.port.read_exact(&mut length_bytes)).await;
+
+        let length_bytes = match read_result {
+            Ok(Ok(_)) => length_bytes,
+            Ok(Err(e)) => return Err(e.into()), // I/O error
+            Err(_) => return Ok(vec![]),        // Device did not reply -> no MEID support
+        };
+
         let length = u32::from_be_bytes(length_bytes) as usize;
 
         let mut meid = vec![0u8; length];
