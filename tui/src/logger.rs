@@ -61,6 +61,7 @@ pub fn init_logger(tui_mode: bool, verbose: bool) {
     });
 
     builder.filter_level(if verbose { LevelFilter::Debug } else { LevelFilter::Info });
+    builder.filter_module("nusb", LevelFilter::Off); // Annoying logs :D
 
     builder.target(env_logger::Target::Stdout);
     builder.init();
