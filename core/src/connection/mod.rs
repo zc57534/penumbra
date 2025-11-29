@@ -175,8 +175,8 @@ impl Connection {
 
         let length_bytes = match read_result {
             Ok(Ok(_)) => length_bytes,
-            Ok(Err(e)) => return Err(e.into()), // I/O error
-            Err(_) => return Ok(vec![]),        // Timeout -> no SocId available
+            Ok(Err(e)) => return Err(e), // I/O error
+            Err(_) => return Ok(vec![]), // Timeout -> no SocId available
         };
 
         let length = u32::from_be_bytes(length_bytes) as usize;
@@ -206,8 +206,8 @@ impl Connection {
 
         let length_bytes = match read_result {
             Ok(Ok(_)) => length_bytes,
-            Ok(Err(e)) => return Err(e.into()), // I/O error
-            Err(_) => return Ok(vec![]),        // Device did not reply -> no MEID support
+            Ok(Err(e)) => return Err(e), // I/O error
+            Err(_) => return Ok(vec![]), // Device did not reply -> no MEID support
         };
 
         let length = u32::from_be_bytes(length_bytes) as usize;
@@ -249,5 +249,44 @@ impl Connection {
         }
 
         Ok(u32::from_be_bytes(config_bytes))
+    }
+
+    pub async fn get_pl_capabilities(&mut self) -> Result<u32> {
+        self.echo(&[Command::GetPlCap as u8], 1).await?;
+
+        let mut cap0 = [0u8; 4];
+        let mut cap1 = [0u8; 4]; // Reserved
+
+        self.port.read_exact(&mut cap0).await?;
+        self.port.read_exact(&mut cap1).await?;
+
+        Ok(u32::from_be_bytes(cap0))
+    }
+
+    /// Reads memory from the device with size, split into 4-byte chunks.
+    pub async fn read32(&mut self, address: u32, size: usize) -> Result<Vec<u8>> {
+        self.echo(&[Command::Read32 as u8], 1).await?;
+        self.echo(&address.to_le_bytes(), 4).await?;
+        self.echo(&(size as u32).to_le_bytes(), 4).await?;
+        let mut status_bytes = [0u8; 2];
+        self.port.read_exact(&mut status_bytes).await?;
+        let status = u16::from_le_bytes(status_bytes);
+
+        if status != 0 {
+            return Err(Error::conn(format!("Read32 failed with status: 0x{:04X}", status)));
+        }
+
+        let mut data = vec![0u8; size];
+        for chunk in data.chunks_mut(4) {
+            self.port.read_exact(chunk).await?;
+        }
+
+        self.port.read_exact(&mut status_bytes).await?;
+        let status = u16::from_le_bytes(status_bytes);
+        if status != 0 {
+            return Err(Error::conn(format!("Read32 failed with status: 0x{:04X}", status)));
+        }
+
+        Ok(data)
     }
 }
