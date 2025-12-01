@@ -20,3 +20,23 @@ pub struct DaArgs {
     // #[arg(long, value_name = "AUTH_FILE")]
     // pub auth_file: Option<PathBuf>,
 }
+
+/// A trait for providing metadata for CLI commands.
+/// This trait can be implemented by command structs to give additional info
+pub trait CommandMetadata {
+    fn aliases() -> &'static [&'static str] {
+        &[]
+    }
+    fn visible_aliases() -> &'static [&'static str] {
+        &[]
+    }
+    fn about() -> &'static str {
+        ""
+    }
+    fn long_about() -> &'static str {
+        ""
+    }
+    fn hide() -> bool {
+        false
+    }
+}
