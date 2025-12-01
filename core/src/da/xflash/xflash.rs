@@ -22,6 +22,7 @@ pub struct XFlash {
     pub(super) using_exts: bool,
     pub(super) read_packet_length: Option<usize>,
     pub(super) write_packet_length: Option<usize>,
+    pub(super) patch: bool,
 }
 
 impl XFlash {
@@ -39,6 +40,7 @@ impl XFlash {
             using_exts: false,
             read_packet_length: None,
             write_packet_length: None,
+            patch: true,
         }
     }
 

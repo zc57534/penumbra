@@ -11,6 +11,7 @@ use tokio::time::{Duration, timeout};
 
 use crate::connection::Connection;
 use crate::connection::port::ConnectionType;
+use crate::core::devinfo::DeviceInfo;
 use crate::core::seccfg::LockFlag;
 use crate::core::storage::{PartitionKind, Storage, StorageType};
 use crate::da::xflash::cmds::*;
@@ -21,10 +22,21 @@ use crate::da::{DA, DAEntryRegion, DAProtocol, XFlash};
 use crate::error::{Error, Result, XFlashError};
 use crate::exploit::Exploit;
 use crate::exploit::carbonara::Carbonara;
+use crate::exploit::kamakiri::Kamakiri2;
 
 #[async_trait::async_trait]
 impl DAProtocol for XFlash {
     async fn upload_da(&mut self) -> Result<bool> {
+        // TODO: Clean up this function
+        let mutex_da = Arc::new(Mutex::new(self.da.clone()));
+        if self.patch {
+            // Try Kamakiri
+            let mut kamakiri = Kamakiri2::new(mutex_da.clone());
+            if let Ok(result) = kamakiri.run(self).await {
+                self.patch = !result;
+            }
+        }
+
         let (da1addr, da1length, da1data, da1sig_len) = match self.da.get_da1() {
             Some(da1) => (da1.addr, da1.length, da1.data.clone(), da1.sig_len),
             None => return Err(Error::penumbra("DA1 region not found")),
@@ -46,16 +58,18 @@ impl DAProtocol for XFlash {
 
         let da2_original_data = da2.data[..da2.data.len().saturating_sub(da2sig_len)].to_vec();
 
-        // TODO: Patch DA2 with Carbonara
-        let carbonara_da = Arc::new(Mutex::new(self.da.clone()));
-        let mut carbonara = Carbonara::new(carbonara_da);
+        let da2data = if self.patch {
+            let mut carbonara = Carbonara::new(mutex_da.clone());
 
-        let da2data = match carbonara.run(self).await {
-            Ok(_) => match carbonara.get_patched_da2() {
-                Some(patched_da2) => patched_da2.data.clone(),
-                None => da2_original_data,
-            },
-            Err(_) => da2_original_data,
+            match carbonara.run(self).await {
+                Ok(_) => match carbonara.get_patched_da2() {
+                    Some(patched_da2) => patched_da2.data.clone(),
+                    None => da2_original_data,
+                },
+                Err(_) => da2_original_data,
+            }
+        } else {
+            da2_original_data
         };
 
         match self.boot_to(da2addr, &da2data).await {
