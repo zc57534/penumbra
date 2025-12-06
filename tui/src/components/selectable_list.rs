@@ -101,12 +101,11 @@ impl SelectableList {
 
 impl SelectableList {
     pub fn toggle_selected(&mut self) {
-        if self.toggled {
-            if let Some(i) = self.selected_index() {
-                if let Some(item) = self.items.get_mut(i) {
-                    item.toggle = !item.toggle;
-                }
-            }
+        if self.toggled
+            && let Some(i) = self.selected_index()
+            && let Some(item) = self.items.get_mut(i)
+        {
+            item.toggle = !item.toggle;
         }
     }
 

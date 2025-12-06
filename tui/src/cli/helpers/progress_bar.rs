@@ -32,14 +32,14 @@ impl AntumbraProgress {
 
     pub fn update(&self, written: u64, msg: &str) {
         self.pb.set_position(written);
-        self.pb.set_message(format!("{}", msg));
+        self.pb.set_message(msg.to_string());
     }
 
     pub fn finish(&self, msg: &str) {
-        self.pb.finish_with_message(format!("{}", msg));
+        self.pb.finish_with_message(msg.to_string());
     }
 
     pub fn abandon(&self, msg: &str) {
-        self.pb.abandon_with_message(format!("{}", msg));
+        self.pb.abandon_with_message(msg.to_string());
     }
 }

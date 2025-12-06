@@ -244,7 +244,7 @@ impl Page for DevicePage {
         let mut status_lines = vec![status_line];
         let paragraph_style = if let Some((msg, msg_style)) = &self.status_message {
             status_lines.push(msg.clone());
-            msg_style.clone()
+            *msg_style
         } else {
             style
         };

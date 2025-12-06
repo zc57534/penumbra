@@ -131,25 +131,23 @@ impl Page for WelcomePage {
                     unimplemented!("Error handling unimplemented: {:?}", err);
                 };
 
-                if key.code == KeyCode::Enter {
-                    if !explorer.files().is_empty() {
-                        let selected_file = &explorer.files()[explorer.selected_idx()];
-                        let path = &selected_file.path();
+                if key.code == KeyCode::Enter && !explorer.files().is_empty() {
+                    let selected_file = &explorer.files()[explorer.selected_idx()];
+                    let path = &selected_file.path();
 
-                        if path.extension().map_or(false, |ext| ext == "bin") {
-                            match fs::read(path) {
-                                Ok(raw_data) => match DAFile::parse_da(&raw_data) {
-                                    Ok(da_file) => {
-                                        ctx.set_loader(path.to_path_buf(), da_file);
-                                        self.state = WelcomeState::Idle;
-                                    }
-                                    Err(err) => {
-                                        unimplemented!("Error handling unimplemented: {:?}", err);
-                                    }
-                                },
+                    if path.extension().is_some_and(|ext| ext == "bin") {
+                        match fs::read(path) {
+                            Ok(raw_data) => match DAFile::parse_da(&raw_data) {
+                                Ok(da_file) => {
+                                    ctx.set_loader(path.to_path_buf(), da_file);
+                                    self.state = WelcomeState::Idle;
+                                }
                                 Err(err) => {
                                     unimplemented!("Error handling unimplemented: {:?}", err);
                                 }
+                            },
+                            Err(err) => {
+                                unimplemented!("Error handling unimplemented: {:?}", err);
                             }
                         }
                     }

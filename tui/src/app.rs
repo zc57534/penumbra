@@ -40,6 +40,7 @@ pub struct Loader {
     path: PathBuf,
     file: DAFile,
 }
+
 impl Loader {
     pub fn new(path: PathBuf, file: DAFile) -> Self {
         Self { path, file }
@@ -93,14 +94,11 @@ impl App {
     pub fn new(args: &CliArgs) -> App {
         let mut ctx = AppCtx::default();
 
-        if let Some(da_path) = &args.da_file {
-            match read(da_path) {
-                Ok(raw_data) => match DAFile::parse_da(&raw_data) {
-                    Ok(file) => ctx.set_loader(da_path.clone(), file),
-                    Err(_) => {}
-                },
-                Err(_) => {}
-            }
+        if let Some(da_path) = &args.da_file
+            && let Ok(raw_data) = read(da_path)
+            && let Ok(file) = DAFile::parse_da(&raw_data)
+        {
+            ctx.set_loader(da_path.clone(), file)
         }
 
         App { current_page: Box::new(WelcomePage::new()), context: ctx }
@@ -123,32 +121,33 @@ impl App {
     }
 
     async fn handle_events(&mut self) -> Result<()> {
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                // Force exit: [Ctrl + Delete]
-                if key.code == KeyCode::Delete && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.context.quit();
-                }
-
-                if let Some(dialog) = &mut self.context.dialog {
-                    match key.code {
-                        KeyCode::Left => dialog.move_left(),
-                        KeyCode::Right => dialog.move_right(),
-                        KeyCode::Enter => {
-                            dialog.press_selected();
-                            self.context.dialog = None;
-                        }
-                        KeyCode::Esc => {
-                            self.context.dialog = None;
-                        }
-                        _ => {}
-                    }
-                    return Ok(());
-                }
-
-                self.current_page.handle_input(&mut self.context, key).await;
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            // Force exit: [Ctrl + Delete]
+            if key.code == KeyCode::Delete && key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.context.quit();
             }
+
+            if let Some(dialog) = &mut self.context.dialog {
+                match key.code {
+                    KeyCode::Left => dialog.move_left(),
+                    KeyCode::Right => dialog.move_right(),
+                    KeyCode::Enter => {
+                        dialog.press_selected();
+                        self.context.dialog = None;
+                    }
+                    KeyCode::Esc => {
+                        self.context.dialog = None;
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+
+            self.current_page.handle_input(&mut self.context, key).await;
         }
+
         Ok(())
     }
 
