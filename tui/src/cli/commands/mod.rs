@@ -3,10 +3,11 @@
     SPDX-FileCopyrightText: 2025 Shomy
 */
 pub mod download;
+pub mod pgpt;
 pub mod read;
 pub mod readall;
-pub mod pgpt;
 pub mod seccfg;
+pub mod upload;
 pub mod write;
 
 pub use download::DownloadArgs;
@@ -14,4 +15,5 @@ pub use pgpt::PgptArgs;
 pub use read::ReadArgs;
 pub use readall::ReadAllArgs;
 pub use seccfg::SeccfgArgs;
+pub use upload::UploadArgs;
 pub use write::WriteArgs;
