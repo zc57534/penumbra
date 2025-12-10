@@ -36,6 +36,9 @@ pub struct CliArgs {
     /// The DA file to use
     #[arg(short, long = "da", value_name = "DA_FILE")]
     pub da_file: Option<PathBuf>,
+    /// The preloader file to use
+    #[arg(short, long = "pl", value_name = "PRELOADER_FILE")]
+    pub preloader_file: Option<PathBuf>,
     /// Subcommands for CLI mode. If provided, TUI mode will be disabled.
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -54,6 +57,9 @@ mtk_commands! {
 #[async_trait]
 pub trait MtkCommand {
     fn da(&self) -> Option<&PathBuf> {
+        None
+    }
+    fn pl(&self) -> Option<&PathBuf> {
         None
     }
     async fn run(&self, dev: &mut Device, state: &mut PersistedDeviceState) -> Result<()>;

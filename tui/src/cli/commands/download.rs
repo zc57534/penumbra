@@ -109,4 +109,8 @@ impl MtkCommand for DownloadArgs {
     fn da(&self) -> Option<&PathBuf> {
         Some(&self.da.da_file)
     }
+
+    fn pl(&self) -> Option<&PathBuf> {
+        self.da.preloader_file.as_ref()
+    }
 }

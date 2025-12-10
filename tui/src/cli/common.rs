@@ -19,6 +19,9 @@ pub struct DaArgs {
     pub da_file: PathBuf,
     // #[arg(long, value_name = "AUTH_FILE")]
     // pub auth_file: Option<PathBuf>,
+    // The preloader file to use
+    #[arg(short, long = "pl", value_name = "PRELOADER_FILE")]
+    pub preloader_file: Option<PathBuf>,
 }
 
 /// A trait for providing metadata for CLI commands.

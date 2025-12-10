@@ -25,6 +25,14 @@ macro_rules! mtk_commands {
                 }
             }
 
+            fn pl(&self) -> Option<&std::path::PathBuf> {
+                match self {
+                    $(
+                        Commands::$variant(inner) => inner.pl(),
+                    )+
+                }
+            }
+
             async fn run(
                 &self,
                 dev: &mut penumbra::Device,
