@@ -80,6 +80,17 @@ pub async fn run_cli(args: &CliArgs) -> Result<()> {
         None
     };
 
+    let pl_data = if let Some(cmd) = &args.command {
+        if let Some(pl_path) = cmd.pl() {
+            let data = read(pl_path).await?;
+            Some(data)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let mut last_seen = Instant::now();
     let timeout = Duration::from_millis(500);
 
@@ -105,6 +116,8 @@ pub async fn run_cli(args: &CliArgs) -> Result<()> {
     } else {
         builder
     };
+
+    builder = if let Some(pl) = pl_data { builder.with_preloader(pl) } else { builder };
 
     let mut dev = builder.build()?;
 
