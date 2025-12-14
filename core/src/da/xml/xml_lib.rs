@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use log::{debug, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time::{Duration, timeout};
 
 use crate::connection::Connection;
 use crate::core::devinfo::DeviceInfo;
@@ -95,25 +96,21 @@ impl Xml {
 
     /// Checks for the lifetime acknowledgment (CMD:START or CMD:END).
     async fn check_lifetime(&mut self, lifetime: XmlCmdLifetime) -> Result<bool> {
-        use tokio::time::{Duration, timeout};
+        match timeout(Duration::from_millis(700), self.read_data()).await {
+            Ok(Ok(data)) => {
+                let pattern: &[u8] = match lifetime {
+                    XmlCmdLifetime::CmdStart => CMD_START,
+                    XmlCmdLifetime::CmdEnd => CMD_END,
+                };
 
-        loop {
-            match timeout(Duration::from_millis(700), self.read_data()).await {
-                Ok(Ok(data)) => {
-                    let pattern: &[u8] = match lifetime {
-                        XmlCmdLifetime::CmdStart => CMD_START,
-                        XmlCmdLifetime::CmdEnd => CMD_END,
-                    };
-
-                    return Ok(data.windows(pattern.len()).any(|window| window == pattern));
-                }
-                Ok(Err(e)) => return Err(e),
-                Err(_) => {
-                    // HACK: Since we might reinit before reading the START lifetime,
-                    // if we timeout, we assume the lifetime is valid.
-                    // TODO: Consider sending CANCEL to restart the handler loop instead.
-                    return Ok(true);
-                }
+                Ok(data.windows(pattern.len()).any(|window| window == pattern))
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => {
+                // HACK: Since we might reinit before reading the START lifetime,
+                // if we timeout, we assume the lifetime is valid.
+                // TODO: Consider sending CANCEL to restart the handler loop instead.
+                Ok(true)
             }
         }
     }
