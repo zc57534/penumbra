@@ -1,34 +1,40 @@
 /*
-    SPDX-License-Identifier: AGPL-3.0-or-later
-    SPDX-FileCopyrightText: 2025 Shomy
+    SPDX-License-Identifier:  AGPL-3.0-or-later
+    SPDX-FileCopyrightText:  2025 Shomy
 */
 use std::fs;
+use std::path::Path;
 
+use anyhow::Result;
 use penumbra::da::DAFile;
+use ratatui::Frame;
+use ratatui::buffer::Buffer;
 #[cfg(target_os = "windows")]
 use ratatui::crossterm::event::KeyEventKind;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
-use ratatui::prelude::*;
-use ratatui::widgets::*;
-use ratatui_explorer::{FileExplorer, Theme};
-use strum::IntoEnumIterator;
-use strum_macros::{AsRefStr, EnumIter};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::widgets::Paragraph;
 
 use super::LOGO;
 use crate::app::{AppCtx, AppPage};
-use crate::components::selectable_list::{
-    ListItemEntry,
-    ListItemEntryBuilder,
-    SelectableList,
-    SelectableListBuilder,
+use crate::components::{
+    Card,
+    CardRow,
+    DescriptionMenu,
+    DescriptionMenuItem,
+    ExplorerResult,
+    FileExplorer,
+    Stars,
 };
 use crate::pages::Page;
 
-#[derive(EnumIter, AsRefStr, Debug, Clone, Copy)]
+type FileVerifier = Box<dyn Fn(&Path, &[u8], &mut AppCtx) -> Result<()> + Send + Sync>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuAction {
-    #[strum(serialize = "Select DA")]
     SelectDa,
-    #[strum(serialize = "Enter DA Mode")]
+    SelectPreloader,
     EnterDaMode,
     Quit,
 }
@@ -37,148 +43,214 @@ enum MenuAction {
 enum WelcomeState {
     #[default]
     Idle,
-    Browsing(FileExplorer),
+    Browsing {
+        explorer: FileExplorer,
+        callback: Option<FileVerifier>,
+    },
 }
 
-#[derive(Default)]
 pub struct WelcomePage {
     state: WelcomeState,
     actions: Vec<MenuAction>,
-    menu: SelectableList,
+    menu: DescriptionMenu,
+    stars: Stars,
+}
+
+impl Default for WelcomePage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WelcomePage {
     pub fn new() -> Self {
-        let actions: Vec<MenuAction> = MenuAction::iter().collect();
-        let menu_items: Vec<ListItemEntry> = actions
-            .iter()
-            .map(|action| {
-                let icon = match action {
-                    MenuAction::SelectDa => '🔍',
-                    MenuAction::EnterDaMode => '🚀',
-                    MenuAction::Quit => '❌',
+        let actions = vec![
+            MenuAction::SelectDa,
+            MenuAction::SelectPreloader,
+            MenuAction::EnterDaMode,
+            MenuAction::Quit,
+        ];
+
+        let items = vec![
+            DescriptionMenuItem {
+                icon: '☾',
+                label: "Select DA".into(),
+                description: "Select a DA file for entering DA mode".into(),
+            },
+            DescriptionMenuItem {
+                icon: '☾',
+                label: "Select Preloader".into(),
+                description: "Select a Preloader file, only needed if connecting in BROM".into(),
+            },
+            DescriptionMenuItem {
+                icon: '◈',
+                label: "Enter DA Mode".into(),
+                description: "Flash, unlock, and manage device".into(),
+            },
+            DescriptionMenuItem {
+                icon: '⏻',
+                label: "Quit".into(),
+                description: "Exit Antumbra".into(),
+            },
+        ];
+
+        Self {
+            state: WelcomeState::Idle,
+            actions,
+            menu: DescriptionMenu::new(items),
+            stars: Stars::new(3.0),
+        }
+    }
+
+    fn open_da_loader(&mut self) {
+        match FileExplorer::new("Select DA File") {
+            Ok(explorer) => {
+                let callback: FileVerifier =
+                    Box::new(|path, data, ctx| match DAFile::parse_da(data) {
+                        Ok(da_file) => {
+                            ctx.set_loader(path.to_path_buf(), da_file);
+                            Ok(())
+                        }
+                        Err(e) => Err(anyhow::anyhow!(e.to_string())),
+                    });
+
+                self.state = WelcomeState::Browsing {
+                    explorer: explorer.extensions(&["bin"]),
+                    callback: Some(callback),
                 };
-                let label = action.as_ref().to_string();
+            }
+            Err(err) => {
+                eprintln!("Failed to launch file explorer: {err}");
+            }
+        }
+    }
 
-                ListItemEntryBuilder::new(label).icon(icon).build().unwrap()
-            })
-            .collect();
-        let menu: SelectableList = SelectableListBuilder::default()
-            .items(menu_items)
-            .highlight_symbol(">>".to_string())
-            .build()
-            .unwrap();
+    fn open_preloader(&mut self) {
+        match FileExplorer::new("Select Preloader File") {
+            Ok(explorer) => {
+                let callback: FileVerifier = Box::new(|path, data, ctx| {
+                    ctx.set_preloader(path.to_path_buf(), data.to_vec());
+                    Ok(())
+                });
 
-        Self { actions, menu, ..Default::default() }
+                self.state = WelcomeState::Browsing {
+                    explorer: explorer.extensions(&["bin"]),
+                    callback: Some(callback),
+                };
+            }
+            Err(err) => {
+                eprintln!("Failed to launch file explorer: {err}");
+            }
+        }
+    }
+
+    fn current_action(&self) -> Option<MenuAction> {
+        self.actions.get(self.menu.selected_index()).copied()
+    }
+
+    fn render_status_cards(&self, area: Rect, buf: &mut Buffer, ctx: &AppCtx) {
+        let card_width = 32u16;
+        let da_value =
+            if ctx.loader().is_some() { ctx.loader_name() } else { "Not selected".to_string() };
+        let pl_value = if ctx.preloader().is_some() {
+            ctx.preloader_name()
+        } else {
+            "Not selected".to_string()
+        };
+        let style_border = Style::default().fg(Color::DarkGray);
+
+        let cards = vec![
+            Card::new("☽ DA", &da_value, card_width, style_border),
+            Card::new("⚡ PL", &pl_value, card_width, style_border),
+        ];
+
+        CardRow::new(cards, 2).render(buf, area.x, area.width, area.y);
     }
 }
 
 #[async_trait::async_trait]
 impl Page for WelcomePage {
-    fn render(&mut self, f: &mut Frame<'_>, ctx: &mut AppCtx) {
+    fn render(&mut self, f: &mut Frame, ctx: &mut AppCtx) {
         let area = f.area();
 
-        // Split vertical: logo | loader info | menu/file explorer
-        let vertical_chunks = Layout::default()
+        self.stars.tick();
+        self.stars.render(area, f.buffer_mut());
+
+        // Layout
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(9), // Logo
-                Constraint::Length(2), // Loader info
-                Constraint::Min(0),    // Rest
+                Constraint::Length(2),  // Top stars
+                Constraint::Length(12), // Logo
+                Constraint::Min(12),    // Menu
+                Constraint::Length(3),  // Status cards
+                Constraint::Length(1),  // Footer
             ])
             .split(area);
 
         // Logo
-        let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
-        f.render_widget(logo, vertical_chunks[0]);
+        let logo = Paragraph::new(LOGO)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Cyan));
+        f.render_widget(logo, chunks[1]);
 
-        // Loader info (show filename or None)
-        let loader_text = ctx
-            .loader()
-            .map(|_| format!("Selected Loader: {}", ctx.loader_name()))
-            .unwrap_or_else(|| "Selected Loader: None".to_string());
-
-        let loader_paragraph = Paragraph::new(loader_text)
-            .style(Style::default().fg(Color::Yellow))
-            .alignment(Alignment::Center);
-        f.render_widget(loader_paragraph, vertical_chunks[1]);
-
-        // Split horizontal: menu | explorer
-        let horizontal_chunks = Layout::default()
+        let menu_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(60), Constraint::Min(0)])
-            .split(vertical_chunks[2]);
+            .constraints([Constraint::Fill(1), Constraint::Length(50), Constraint::Fill(1)])
+            .split(chunks[2]);
 
-        // Menu
-        self.menu.render(horizontal_chunks[0], f, "Menu");
+        self.menu.render(menu_layout[1], f.buffer_mut());
 
-        // File explorer
-        if let WelcomeState::Browsing(explorer) = &mut self.state {
-            f.render_widget(&explorer.widget(), horizontal_chunks[1]);
+        self.render_status_cards(chunks[3], f.buffer_mut(), ctx);
+
+        let footer = Paragraph::new("[↑↓] Navigate    [Enter] Select    [Esc] Back")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(footer, chunks[4]);
+
+        if let WelcomeState::Browsing { explorer, callback: _ } = &self.state {
+            explorer.render_modal(area, f.buffer_mut());
         }
     }
 
     async fn handle_input(&mut self, ctx: &mut AppCtx, key: KeyEvent) {
-        // Windows specific fix
         #[cfg(target_os = "windows")]
         if key.kind != KeyEventKind::Press {
             return;
         }
 
         match &mut self.state {
-            WelcomeState::Browsing(explorer) => {
-                if let Err(err) = explorer.handle(&Event::Key(key)) {
-                    unimplemented!("Error handling unimplemented: {:?}", err);
-                };
-
-                if key.code == KeyCode::Enter && !explorer.files().is_empty() {
-                    let selected_file = &explorer.files()[explorer.selected_idx()];
-                    let path = &selected_file.path();
-
-                    if path.extension().is_some_and(|ext| ext == "bin") {
-                        match fs::read(path) {
-                            Ok(raw_data) => match DAFile::parse_da(&raw_data) {
-                                Ok(da_file) => {
-                                    ctx.set_loader(path.to_path_buf(), da_file);
-                                    self.state = WelcomeState::Idle;
-                                }
-                                Err(err) => {
-                                    unimplemented!("Error handling unimplemented: {:?}", err);
-                                }
-                            },
-                            Err(err) => {
-                                unimplemented!("Error handling unimplemented: {:?}", err);
+            WelcomeState::Browsing { explorer, callback } => match explorer.handle_key(key) {
+                ExplorerResult::Selected(path) => match fs::read(&path) {
+                    Ok(data) => {
+                        if let Some(cb) = callback {
+                            if let Err(e) = cb(&path, &data, ctx) {
+                                error_dialog!(ctx, e.to_string());
+                            }
+                        } else {
+                            match DAFile::parse_da(&data) {
+                                Ok(da_file) => ctx.set_loader(path.to_path_buf(), da_file),
+                                Err(e) => error_dialog!(ctx, e.to_string()),
                             }
                         }
+                        self.state = WelcomeState::Idle;
                     }
-                }
-
-                if key.code == KeyCode::Esc {
-                    self.state = WelcomeState::Idle;
-                }
-            }
+                    Err(e) => error_dialog!(ctx, e.to_string()),
+                },
+                ExplorerResult::Cancelled => self.state = WelcomeState::Idle,
+                ExplorerResult::Pending => {}
+            },
 
             WelcomeState::Idle => match key.code {
                 KeyCode::Up => self.menu.previous(),
                 KeyCode::Down => self.menu.next(),
-                KeyCode::Enter => {
-                    let action = self.actions[self.menu.selected_index().unwrap_or(2)];
-                    match action {
-                        MenuAction::SelectDa => {
-                            let theme = Theme::default().add_default_title();
-                            match FileExplorer::with_theme(theme) {
-                                Ok(explorer) => {
-                                    self.state = WelcomeState::Browsing(explorer);
-                                }
-                                Err(err) => {
-                                    eprintln!("Failed to launch file explorer: {err}");
-                                }
-                            }
-                        }
-                        MenuAction::EnterDaMode => ctx.change_page(AppPage::DevicePage),
-                        MenuAction::Quit => ctx.quit(),
-                    }
-                }
+                KeyCode::Enter => match self.current_action() {
+                    Some(MenuAction::SelectDa) => self.open_da_loader(),
+                    Some(MenuAction::SelectPreloader) => self.open_preloader(),
+                    Some(MenuAction::EnterDaMode) => ctx.change_page(AppPage::DevicePage),
+                    Some(MenuAction::Quit) => ctx.quit(),
+                    None => {}
+                },
                 _ => {}
             },
         }
