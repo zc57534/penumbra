@@ -1,13 +1,11 @@
-use derive_builder::Builder;
 /*
     SPDX-License-Identifier: AGPL-3.0-or-later
     SPDX-FileCopyrightText: 2025 DiabloSat
     SPDX-FileCopyrightText: 2025 Shomy
 */
-use ratatui::{
-    prelude::*,
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
-};
+use derive_builder::Builder;
+use ratatui::prelude::*;
+use ratatui::widgets::{Block, Borders, Paragraph, Widget, Wrap};
 use strum_macros::AsRefStr;
 
 #[derive(Clone, Copy, AsRefStr, Default)]
