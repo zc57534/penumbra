@@ -3,6 +3,10 @@
 Penumbra is a Rust crate and tool for interacting with Mediatek devices.<br>
 It provides flashing and readback capabilities, as well as bootloader unlocking and relocking on vulnerable devices.<br>
 
+<h1  align="center">
+<img src="./docs/content/assets/antumbra-tui.png" width="1024"/>
+</h1>
+
 ## Requirements
 
 * On Windows, you'll need to install Mediatek Drivers.
