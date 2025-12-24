@@ -5,19 +5,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use log::{debug, error, info};
-use rusb::{
-    Context,
-    Device,
-    DeviceHandle,
-    Direction,
-    GlobalContext,
-    Recipient,
-    RequestType,
-    UsbContext,
-};
+use log::{error, info};
+use rusb::{Context, Device, DeviceHandle, Direction, Recipient, RequestType, UsbContext};
 use tokio::sync::Mutex;
-use tokio::task;
+use tokio::task::spawn_blocking;
+use tokio::time::sleep;
 
 use crate::connection::port::{ConnectionType, KNOWN_PORTS, MTKPort};
 use crate::error::{Error, Result};
@@ -65,8 +57,6 @@ impl UsbMTKPort {
         }
     }
 
-    // This just serve the purpose of finding bEndpointAddress for bulk IN and OUT, as well
-    // as their max packet sizes.
     fn find_bulk_endpoints(device: &Device<Context>) -> Option<(u8, usize, u8, usize)> {
         let config = device.active_config_descriptor().ok()?;
         let mut in_ep = None;
@@ -100,7 +90,7 @@ impl UsbMTKPort {
     pub async fn setup_cdc(&self) -> Result<()> {
         let handle = self.handle.clone();
 
-        task::spawn_blocking(move || -> Result<()> {
+        spawn_blocking(move || -> Result<()> {
             let handle = handle.blocking_lock();
 
             const CDC_INTERFACE: u16 = 1;
@@ -137,7 +127,7 @@ impl UsbMTKPort {
             Ok(())
         })
         .await
-        .map_err(|e| Error::io("Failed during CDC setup task"))?
+        .map_err(|_| Error::io("Failed during CDC setup task"))?
     }
 
     pub fn from_device(device: Device<Context>) -> Option<Self> {
@@ -187,7 +177,7 @@ impl MTKPort for UsbMTKPort {
         let port_name = self.port_name.clone();
 
         // RUSB is sync, so we need to spawn blocking here
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        spawn_blocking(move || -> Result<()> {
             let handle = handle.blocking_lock();
 
             for interface in 0..=1 {
@@ -223,11 +213,11 @@ impl MTKPort for UsbMTKPort {
             Ok(())
         })
         .await
-        .map_err(|e| Error::io("USB open task failed"))?;
+        .map_err(|_| Error::io("USB open task failed"))?;
 
         #[cfg(target_os = "windows")]
         {
-            if let Err(e) = self.setup_cdc().await {
+            if let Err(_) = self.setup_cdc().await {
                 debug!("Windows CDC Setup failed!!");
             }
         }
@@ -246,7 +236,7 @@ impl MTKPort for UsbMTKPort {
         let handle = self.handle.clone();
         let port_name = self.port_name.clone();
 
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        spawn_blocking(move || -> Result<()> {
             let handle = handle.blocking_lock();
 
             for iface in 0..=1 {
@@ -279,7 +269,7 @@ impl MTKPort for UsbMTKPort {
         while total_read < buf.len() {
             let to_read = buf.len() - total_read;
             let mut temp_buf = vec![0u8; to_read];
-            let result = tokio::task::spawn_blocking({
+            let result = spawn_blocking({
                 let handle = handle.clone();
                 move || {
                     let locked = handle.blocking_lock();
@@ -314,16 +304,16 @@ impl MTKPort for UsbMTKPort {
             let endpoint = self.in_endpoint;
             let timeout = Duration::from_millis(5000);
 
-            let (response, n) = tokio::task::spawn_blocking(move || {
+            let (response, n) = spawn_blocking(move || {
                 let mut response = vec![0u8; 5];
                 let locked = handle.blocking_lock();
                 match locked.read_bulk(endpoint, &mut response, timeout) {
                     Ok(count) => Ok((response, count)),
-                    Err(e) => Err(Error::io("Bulk read failed")),
+                    Err(_) => Err(Error::io("Bulk read failed")),
                 }
             })
             .await
-            .map_err(|e| Error::io("USB bulk read task failed"))??;
+            .map_err(|_| Error::io("USB bulk read task failed"))??;
 
             if n == 0 {
                 return Err(Error::io("USB returned 0 bytes"));
@@ -336,7 +326,7 @@ impl MTKPort for UsbMTKPort {
                 i += 1;
             } else {
                 i = 0;
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                sleep(Duration::from_millis(5)).await;
             }
         }
         Ok(())
@@ -348,10 +338,10 @@ impl MTKPort for UsbMTKPort {
         let timeout = Duration::from_millis(5000);
         let data = buf.to_vec();
 
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
             let locked = handle.blocking_lock();
             let res = locked.write_bulk(endpoint, &data, timeout);
-            res.map_err(|e| Error::io("Bulk write failed"))
+            res.map_err(|_| Error::io("Bulk write failed"))
         })
         .await
         .unwrap()?;
@@ -376,7 +366,7 @@ impl MTKPort for UsbMTKPort {
     }
 
     async fn find_device() -> Result<Option<Self>> {
-        let devices = tokio::task::spawn_blocking(|| -> Result<Vec<Device<Context>>> {
+        let devices = spawn_blocking(|| -> Result<Vec<Device<Context>>> {
             let context = Context::new()
                 .map_err(|e| Error::io(format!("Failed to create USB context: {:?}", e)))?;
             let devices = context
@@ -417,7 +407,7 @@ impl MTKPort for UsbMTKPort {
         let handle = self.handle.clone();
         let data = data.to_vec(); // make it owned for blocking closure
 
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
             let locked = handle.blocking_lock();
 
             let direction = if request_type & 0x80 != 0 { Direction::In } else { Direction::Out };
@@ -458,7 +448,7 @@ impl MTKPort for UsbMTKPort {
     ) -> Result<Vec<u8>> {
         let handle = self.handle.clone();
 
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
             let mut buf = vec![0u8; len];
             let locked = handle.blocking_lock();
 
