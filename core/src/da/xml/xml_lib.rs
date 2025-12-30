@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use log::{debug, info};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::time::{Duration, timeout};
 
 use crate::connection::Connection;
@@ -386,5 +386,16 @@ impl Xml {
         }
 
         None
+    }
+
+    pub(super) async fn get_upload_file_resp(&mut self) -> Result<String> {
+        let mut buffer = Vec::new();
+        let mut writer = BufWriter::new(&mut buffer);
+        let mut progress = |_, _| {};
+
+        self.upload_file(&mut writer, &mut progress).await?;
+        writer.flush().await?;
+
+        Ok(String::from_utf8_lossy(&buffer).into_owned())
     }
 }
