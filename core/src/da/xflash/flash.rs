@@ -333,7 +333,7 @@ where
     let part = match xflash.dev_info.get_partition(&part_name).await {
         Some(p) => p,
         None => {
-            return Err(Error::proto(&format!(
+            return Err(Error::proto(format!(
                 "Partition '{}' not found in partition table",
                 part_name
             )));
