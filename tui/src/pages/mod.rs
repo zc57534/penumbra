@@ -3,8 +3,10 @@
     SPDX-FileCopyrightText: 2025 Shomy
 */
 pub mod device;
+pub mod options;
 pub mod welcome;
 pub use device::DevicePage;
+pub use options::OptionsPage;
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 pub use welcome::WelcomePage;

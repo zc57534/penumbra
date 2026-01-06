@@ -37,6 +37,7 @@ enum MenuAction {
     SelectDa,
     SelectPreloader,
     EnterDaMode,
+    Options,
     Quit,
 }
 
@@ -69,6 +70,7 @@ impl WelcomePage {
             MenuAction::SelectDa,
             MenuAction::SelectPreloader,
             MenuAction::EnterDaMode,
+            MenuAction::Options,
             MenuAction::Quit,
         ];
 
@@ -87,6 +89,11 @@ impl WelcomePage {
                 icon: '◈',
                 label: "Enter DA Mode".into(),
                 description: "Flash, unlock, and manage device".into(),
+            },
+            DescriptionMenuItem {
+                icon: '',
+                label: "Options".into(),
+                description: "Change Antumbra settings".into(),
             },
             DescriptionMenuItem {
                 icon: '⏻',
@@ -249,6 +256,7 @@ impl Page for WelcomePage {
                     Some(MenuAction::SelectDa) => self.open_da_loader(),
                     Some(MenuAction::SelectPreloader) => self.open_preloader(),
                     Some(MenuAction::EnterDaMode) => ctx.change_page(AppPage::DevicePage),
+                    Some(MenuAction::Options) => ctx.change_page(AppPage::Options),
                     Some(MenuAction::Quit) => ctx.quit(),
                     None => {}
                 },
