@@ -100,6 +100,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "clap-num",
  "colored",
  "crossterm 0.29.0",
  "derive_builder",
@@ -266,6 +267,15 @@ checksum = "4c26d721170e0295f191a69bd9a1f93efcdb0aff38684b61ab5750468972e5f5"
 dependencies = [
  "clap_builder",
  "clap_derive",
+]
+
+[[package]]
+name = "clap-num"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "822c4000301ac390e65995c62207501e3ef800a1fc441df913a5e8e4dc374816"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

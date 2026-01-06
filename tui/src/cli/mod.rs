@@ -54,6 +54,7 @@ mtk_commands! {
     ReadAll(ReadAllArgs),
     Seccfg(SeccfgArgs),
     Pgpt(PgptArgs),
+    Peek(PeekArgs),
 }
 
 #[async_trait]
