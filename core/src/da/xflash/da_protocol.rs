@@ -16,77 +16,83 @@ use crate::core::devinfo::DeviceInfo;
 use crate::core::seccfg::LockFlag;
 use crate::core::storage::{Partition, PartitionKind, Storage, StorageType, parse_gpt};
 use crate::da::xflash::cmds::*;
+#[cfg(not(feature = "no_exploits"))]
 use crate::da::xflash::exts::{read32_ext, write32_ext};
+use crate::da::xflash::flash;
+#[cfg(not(feature = "no_exploits"))]
+use crate::da::xflash::patch;
+#[cfg(not(feature = "no_exploits"))]
 use crate::da::xflash::sec::{parse_seccfg, write_seccfg};
-use crate::da::xflash::{flash, patch};
 use crate::da::{DA, DAEntryRegion, DAProtocol, XFlash};
 use crate::error::{Error, Result, XFlashError};
+#[cfg(not(feature = "no_exploits"))]
 use crate::exploit::Exploit;
+#[cfg(not(feature = "no_exploits"))]
 use crate::exploit::carbonara::Carbonara;
+#[cfg(not(feature = "no_exploits"))]
 use crate::exploit::kamakiri::Kamakiri2;
 
 #[async_trait::async_trait]
 impl DAProtocol for XFlash {
     async fn upload_da(&mut self) -> Result<bool> {
-        // TODO: Clean up this function
-        let mutex_da = Arc::new(Mutex::new(self.da.clone()));
-        if self.patch {
-            // Try Kamakiri
-            let mut kamakiri = Kamakiri2::new(mutex_da.clone());
-            if let Ok(result) = kamakiri.run(self).await {
-                self.patch = !result;
-                if let Some(patched_da) = kamakiri.get_patched_da() {
-                    self.da = patched_da.to_owned();
+        #[cfg(not(feature = "no_exploits"))]
+        {
+            if self.patch {
+                let mutex_da = Arc::new(Mutex::new(self.da.clone()));
+                let mut kamakiri = Kamakiri2::new(mutex_da);
+                if let Ok(result) = kamakiri.run(self).await {
+                    self.patch = !result;
+                    if let Some(patched_da) = kamakiri.get_patched_da() {
+                        self.da = patched_da.to_owned();
+                    }
                 }
             }
         }
 
-        let (da1addr, da1length, da1data, da1sig_len) = match self.da.get_da1() {
-            Some(da1) => (da1.addr, da1.length, da1.data.clone(), da1.sig_len),
-            None => return Err(Error::penumbra("DA1 region not found")),
-        };
-
-        self.upload_stage1(da1addr, da1length, da1data, da1sig_len)
+        let da1 = self.da.get_da1().ok_or_else(|| Error::penumbra("DA1 region not found"))?;
+        self.upload_stage1(da1.addr, da1.length, da1.data.clone(), da1.sig_len)
             .await
             .map_err(|e| Error::proto(format!("Failed to upload DA1: {}", e)))?;
 
-        // Let's get the packet length in DA1, so that we can have decent speeds
         flash::get_packet_length(self).await?;
 
-        let da2 = match self.da.get_da2() {
-            Some(da2) => da2.clone(),
-            None => return Err(Error::penumbra("DA2 region not found")),
+        let (da2_addr, da2_original_data) = {
+            let da2 = self.da.get_da2().ok_or_else(|| Error::penumbra("DA2 region not found"))?;
+            let sig_len = da2.sig_len as usize;
+            let data = da2.data[..da2.data.len().saturating_sub(sig_len)].to_vec();
+            (da2.addr, data)
         };
-        let da2addr = da2.addr;
-        let da2sig_len = da2.sig_len as usize;
 
-        let da2_original_data = da2.data[..da2.data.len().saturating_sub(da2sig_len)].to_vec();
-
+        #[cfg(not(feature = "no_exploits"))]
         let da2data = if self.patch {
-            let mut carbonara = Carbonara::new(mutex_da.clone());
-
+            let mutex_da = Arc::new(Mutex::new(self.da.clone()));
+            let mut carbonara = Carbonara::new(mutex_da);
             match carbonara.run(self).await {
-                Ok(_) => match carbonara.get_patched_da2() {
-                    Some(patched_da2) => patched_da2.data.clone(),
-                    None => da2_original_data,
-                },
+                Ok(_) => {
+                    carbonara.get_patched_da2().map(|p| p.data.clone()).unwrap_or(da2_original_data)
+                }
                 Err(_) => da2_original_data,
             }
         } else {
             da2_original_data
         };
 
-        match self.boot_to(da2addr, &da2data).await {
+        #[cfg(feature = "no_exploits")]
+        let da2data = da2_original_data;
+
+        match self.boot_to(da2_addr, &da2data).await {
             Ok(true) => {
                 info!("[Penumbra] Successfully uploaded and executed DA2");
                 self.handle_sla().await?;
-                // Refetch packet lengths after DA2, since DA2 operates on higher speeds
                 flash::get_packet_length(self).await?;
+
+                #[cfg(not(feature = "no_exploits"))]
                 self.boot_extensions().await?;
+
                 Ok(true)
             }
-            Ok(false) => return Err(Error::proto("Failed to execute DA2")),
-            Err(e) => return Err(Error::proto(format!("Error uploading DA2: {}", e))),
+            Ok(false) => Err(Error::proto("Failed to execute DA2")),
+            Err(e) => Err(Error::proto(format!("Error uploading DA2: {}", e))),
         }
     }
 
@@ -253,6 +259,7 @@ impl DAProtocol for XFlash {
     }
 
     async fn read32(&mut self, addr: u32) -> Result<u32> {
+        #[cfg(not(feature = "no_exploits"))]
         if self.using_exts {
             return read32_ext(self, addr).await;
         }
@@ -268,6 +275,7 @@ impl DAProtocol for XFlash {
     }
 
     async fn write32(&mut self, addr: u32, value: u32) -> Result<()> {
+        #[cfg(not(feature = "no_exploits"))]
         if self.using_exts {
             return write32_ext(self, addr, value).await;
         }
@@ -321,6 +329,7 @@ impl DAProtocol for XFlash {
         partitions
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     async fn set_seccfg_lock_state(&mut self, locked: LockFlag) -> Option<Vec<u8>> {
         let seccfg = parse_seccfg(self).await;
         if seccfg.is_none() {
@@ -333,6 +342,7 @@ impl DAProtocol for XFlash {
         write_seccfg(self, &mut seccfg).await
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     async fn peek(
         &mut self,
         _addr: u32,
@@ -344,14 +354,17 @@ impl DAProtocol for XFlash {
         todo!()
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da(&mut self) -> Option<DA> {
         patch::patch_da(self).ok()
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da1(&mut self) -> Option<DAEntryRegion> {
         patch::patch_da1(self).ok()
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da2(&mut self) -> Option<DAEntryRegion> {
         patch::patch_da2(self).ok()
     }

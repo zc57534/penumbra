@@ -74,6 +74,8 @@ pub trait DAProtocol: Send {
     // Memory
     async fn read32(&mut self, addr: u32) -> Result<u32>;
     async fn write32(&mut self, addr: u32, value: u32) -> Result<()>;
+
+    #[cfg(not(feature = "no_exploits"))]
     async fn peek(
         &mut self,
         addr: u32,
@@ -94,12 +96,16 @@ pub trait DAProtocol: Send {
     async fn get_partitions(&mut self) -> Vec<Partition>;
 
     // Sec
+    #[cfg(not(feature = "no_exploits"))]
     async fn set_seccfg_lock_state(&mut self, locked: LockFlag) -> Option<Vec<u8>>;
 
     // DA Patching utils. These *must* be protocol specific, as different protocols
     // have different DA implementations
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da(&mut self) -> Option<DA>;
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da1(&mut self) -> Option<DAEntryRegion>;
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da2(&mut self) -> Option<DAEntryRegion>;
 
     // DevInfo helpers

@@ -7,6 +7,7 @@ pub mod core;
 pub mod da;
 pub mod device;
 pub mod error;
+#[cfg(not(feature = "no_exploits"))]
 pub mod exploit;
 pub mod utilities;
 

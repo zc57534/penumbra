@@ -12,6 +12,7 @@ use crate::core::devinfo::DeviceInfo;
 use crate::core::emi::extract_emi_settings;
 use crate::core::storage::Storage;
 use crate::da::xflash::cmds::*;
+#[cfg(not(feature = "no_exploits"))]
 use crate::da::xflash::exts::boot_extensions;
 use crate::da::xflash::storage::detect_storage;
 use crate::da::{DA, DAProtocol};
@@ -141,6 +142,7 @@ impl XFlash {
         Ok(true)
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     pub(super) async fn boot_extensions(&mut self) -> Result<bool> {
         if self.using_exts {
             warn!("DA extensions already in use, skipping re-upload");

@@ -23,11 +23,15 @@ use crate::da::xml::cmds::{
     NotifyInitHw,
     XmlCmdLifetime,
 };
+use crate::da::xml::flash;
+#[cfg(not(feature = "no_exploits"))]
 use crate::da::xml::sec::{parse_seccfg, write_seccfg};
-use crate::da::xml::{exts, flash, patch};
+#[cfg(not(feature = "no_exploits"))]
+use crate::da::xml::{exts, patch};
 use crate::da::{DA, DAEntryRegion, Xml};
 use crate::error::{Error, Result};
 use crate::exploit::Exploit;
+#[cfg(not(feature = "no_exploits"))]
 use crate::exploit::carbonara::Carbonara;
 
 #[async_trait]
@@ -48,22 +52,32 @@ impl DAProtocol for Xml {
             Some(da2) => da2.clone(),
             None => return Err(Error::penumbra("DA2 region not found")),
         };
+
         let da2addr = da2.addr;
         let da2sig_len = da2.sig_len as usize;
         let da2_original_data = da2.data[..da2.data.len().saturating_sub(da2sig_len)].to_vec();
 
-        let da2data = if self.patch {
-            let mut carbonara = Carbonara::new(mutex_da.clone());
+        #[cfg(not(feature = "no_exploits"))]
+        let da2data = {
+            if self.patch {
+                let mut carbonara = Carbonara::new(mutex_da.clone());
 
-            match carbonara.run(self).await {
-                Ok(_) => match carbonara.get_patched_da2() {
-                    Some(patched_da2) => patched_da2.data.clone(),
-                    None => da2_original_data,
-                },
-                Err(_) => da2_original_data,
+                match carbonara.run(self).await {
+                    Ok(_) => carbonara
+                        .get_patched_da2()
+                        .map(|d| d.data.clone())
+                        .unwrap_or_else(|| da2_original_data.clone()),
+                    Err(_) => da2_original_data.clone(),
+                }
+            } else {
+                da2_original_data.clone()
             }
-        } else {
-            da2_original_data
+        };
+
+        #[cfg(feature = "no_exploits")]
+        let da2data = {
+            let _ = mutex_da;
+            da2_original_data.clone()
         };
 
         info!("Uploading and booting to XML DA2...");
@@ -81,6 +95,7 @@ impl DAProtocol for Xml {
 
         info!("Successfully uploaded and booted to XML DA2");
 
+        #[cfg(not(feature = "no_exploits"))]
         self.boot_extensions().await?;
 
         Ok(true)
@@ -252,6 +267,7 @@ impl DAProtocol for Xml {
         partitions
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     async fn set_seccfg_lock_state(&mut self, locked: LockFlag) -> Option<Vec<u8>> {
         let seccfg = parse_seccfg(self).await;
         if seccfg.is_none() {
@@ -264,6 +280,7 @@ impl DAProtocol for Xml {
         write_seccfg(self, &mut seccfg).await
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     async fn peek(
         &mut self,
         addr: u32,
@@ -274,14 +291,17 @@ impl DAProtocol for Xml {
         exts::peek(self, addr, length, writer, progress).await
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da(&mut self) -> Option<DA> {
         patch::patch_da(self).ok()
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da1(&mut self) -> Option<DAEntryRegion> {
         patch::patch_da1(self).ok()
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     fn patch_da2(&mut self) -> Option<DAEntryRegion> {
         patch::patch_da2(self).ok()
     }

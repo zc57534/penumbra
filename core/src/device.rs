@@ -547,6 +547,7 @@ impl Device {
         protocol.format(partition.to_string(), progress).await
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     pub async fn set_seccfg_lock_state(&mut self, lock_state: LockFlag) -> Option<Vec<u8>> {
         // Ensure DA mode first; this will populate partitions and storage
         self.ensure_da_mode().await.ok()?;
@@ -554,6 +555,7 @@ impl Device {
         protocol.set_seccfg_lock_state(lock_state).await
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     pub async fn peek(
         &mut self,
         addr: u32,

@@ -25,6 +25,7 @@ use crate::da::xml::cmds::{
     XmlCommand,
     create_cmd,
 };
+#[cfg(not(feature = "no_exploits"))]
 use crate::da::xml::exts::boot_extensions;
 use crate::da::xml::storage::detect_storage;
 use crate::da::{DA, DAProtocol};
@@ -426,6 +427,7 @@ impl Xml {
         Ok(String::from_utf8_lossy(&buffer).into_owned())
     }
 
+    #[cfg(not(feature = "no_exploits"))]
     pub(super) async fn boot_extensions(&mut self) -> Result<bool> {
         if self.using_exts {
             warn!("DA extensions already in use, skipping re-upload");
