@@ -30,6 +30,7 @@ use crate::da::xml::sec::{parse_seccfg, write_seccfg};
 use crate::da::xml::{exts, patch};
 use crate::da::{DA, DAEntryRegion, Xml};
 use crate::error::{Error, Result};
+#[cfg(not(feature = "no_exploits"))]
 use crate::exploit::Exploit;
 #[cfg(not(feature = "no_exploits"))]
 use crate::exploit::carbonara::Carbonara;
