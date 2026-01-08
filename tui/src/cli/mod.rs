@@ -55,6 +55,8 @@ mtk_commands! {
     Seccfg(SeccfgArgs),
     Pgpt(PgptArgs),
     Peek(PeekArgs),
+    Shutdown(ShutdownArgs),
+    Reboot(RebootArgs),
 }
 
 #[async_trait]

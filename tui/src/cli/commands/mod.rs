@@ -9,7 +9,9 @@ pub mod peek;
 pub mod pgpt;
 pub mod read;
 pub mod readall;
+pub mod reboot;
 pub mod seccfg;
+pub mod shutdown;
 pub mod upload;
 pub mod write;
 
@@ -20,6 +22,8 @@ pub use peek::PeekArgs;
 pub use pgpt::PgptArgs;
 pub use read::ReadArgs;
 pub use readall::ReadAllArgs;
+pub use reboot::RebootArgs;
 pub use seccfg::SeccfgArgs;
+pub use shutdown::ShutdownArgs;
 pub use upload::UploadArgs;
 pub use write::WriteArgs;
