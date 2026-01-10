@@ -128,8 +128,8 @@ Scripts:
 * [ ] Parse sec policy from both preloader and lk (find a good seclib pattern)
 
 Documentation:
-* [ ] Document XFlash protocol
-* [ ] Improve Carbonara information
+* [x] Document XFlash protocol
+* [x] Improve Carbonara information
 
 ## Learning Resources
 
