@@ -120,7 +120,7 @@ impl SecCfgV4 {
     pub fn set_lock_state(&mut self, lock_flag: LockFlag) {
         match lock_flag {
             LockFlag::Lock => {
-                self.lock_state = 1;
+                self.lock_state = 4;
                 self.critical_lock_state = 1;
             }
             LockFlag::Unlock => {
