@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use log::info;
 use penumbra::connection::port::ConnectionType;
 use penumbra::core::devinfo::DevInfoData;
@@ -72,6 +72,11 @@ pub trait MtkCommand {
 }
 
 pub async fn run_cli(args: &CliArgs) -> Result<()> {
+    if args.command.is_none() {
+        CliArgs::command().print_help()?;
+        return Ok(());
+    }
+
     let mut state = PersistedDeviceState::load().await;
 
     let da_data = if let Some(cmd) = &args.command {
@@ -165,8 +170,6 @@ pub async fn run_cli(args: &CliArgs) -> Result<()> {
         cmd.run(&mut dev, &mut state).await?;
         state.target_config = dev.dev_info.target_config().await; // Update just in case after Kamakiri
         state.save().await?;
-    } else {
-        println!("No command provided.");
     }
 
     Ok(())

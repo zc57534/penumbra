@@ -4,17 +4,22 @@
 */
 #[macro_use]
 mod macros;
+
+#[cfg(feature = "tui")]
 mod app;
-mod cli;
+#[cfg(feature = "tui")]
 mod components;
+#[cfg(feature = "tui")]
+mod pages;
+#[cfg(feature = "tui")]
+mod themes;
+
+mod cli;
 mod config;
 mod error;
 mod logger;
-mod pages;
-mod themes;
 
 use anyhow::Result;
-use app::App;
 use clap::Parser;
 use cli::{CliArgs, run_cli};
 use logger::init_logger;
@@ -23,7 +28,7 @@ use logger::init_logger;
 async fn main() -> Result<()> {
     let args = CliArgs::parse();
 
-    let cli_mode = args.cli || args.command.is_some();
+    let cli_mode = args.cli || args.command.is_some() || !cfg!(feature = "tui");
     let tui_mode = !cli_mode;
 
     init_logger(tui_mode, args.verbose);
@@ -32,11 +37,18 @@ async fn main() -> Result<()> {
         return run_cli(&args).await;
     }
 
-    let mut terminal = ratatui::init();
-    let mut app = App::new(&args);
+    #[cfg(feature = "tui")]
+    {
+        use app::App;
 
-    let app_result = app.run(&mut terminal).await;
+        let mut terminal = ratatui::init();
+        let mut app = App::new(&args);
 
-    ratatui::restore();
-    app_result
+        let app_result = app.run(&mut terminal).await;
+
+        ratatui::restore();
+        return app_result;
+    }
+
+    unreachable!()
 }
