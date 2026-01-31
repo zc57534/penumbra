@@ -32,7 +32,7 @@ serialport = { version = "4.7.3", optional = true }
 sha2 = "0.10.9"
 simple-xml = "0.1.10"
 thiserror = "2.0.17"
-tokio = { version = "1.47.1", features = ["fs", "time", "sync", "io-util"]}
+tokio = { version = "1.47.1", features = ["fs", "time", "sync", "io-util", "rt-multi-thread"]}
 tokio-serial = { version = "5.4.5", optional = true }
 xmlcmd-derive = { path = "xmlcmd_derive" }
 
@@ -40,5 +40,6 @@ xmlcmd-derive = { path = "xmlcmd_derive" }
 default = ["nusb"]
 libusb = ["rusb"]
 serial = ["serialport", "tokio-serial"]
+libusb-exp = []
 no_localslakeyring = []
 no_exploits = []
