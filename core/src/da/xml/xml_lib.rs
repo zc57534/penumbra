@@ -366,7 +366,7 @@ impl Xml {
         }
 
         self.ack(None).await?;
-        self.ack(Some(op.default().into())).await?;
+        self.ack(Some(op.default())).await?;
 
         Ok(true)
     }

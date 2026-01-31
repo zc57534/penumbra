@@ -22,19 +22,19 @@ pub const HOST_CMDS: &str =
 pub enum FileSystemOp {
     MkDir,
     Exists,
-    FileSize,
+    FileSize(usize),
     RemoveAll,
     Remove,
 }
 
 impl FileSystemOp {
-    pub fn default(&self) -> &'static str {
+    pub fn default(&self) -> String {
         match self {
-            FileSystemOp::MkDir => "MKDIR\u{0}",
-            FileSystemOp::Exists => "NOT-EXISTS\u{0}", // To avoid more reads
-            FileSystemOp::FileSize => "FILE-SIZE\u{0}",
-            FileSystemOp::RemoveAll => "REMOVE-ALL\u{0}",
-            FileSystemOp::Remove => "REMOVE\u{0}",
+            FileSystemOp::MkDir => "MKDIR\u{0}".to_string(),
+            FileSystemOp::Exists => "NOT-EXISTS\u{0}".to_string(), // To avoid more reads
+            FileSystemOp::FileSize(size) => format!("{:X}", size),
+            FileSystemOp::RemoveAll => "REMOVE-ALL\u{0}".to_string(),
+            FileSystemOp::Remove => "REMOVE\u{0}".to_string(),
         }
     }
 }
