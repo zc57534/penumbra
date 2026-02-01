@@ -23,10 +23,6 @@ pub struct UsbMTKPort {
     port_name: String,
     in_endpoint: u8,
     out_endpoint: u8,
-    in_max_packet_size: usize,
-    out_max_packet_size: usize,
-    vid: u16,
-    pid: u16,
 }
 
 impl UsbMTKPort {
@@ -37,10 +33,6 @@ impl UsbMTKPort {
         baudrate: u32,
         in_endpoint: u8,
         out_endpoint: u8,
-        in_max_packet_size: usize,
-        out_max_packet_size: usize,
-        vid: u16,
-        pid: u16,
     ) -> Self {
         Self {
             handle: Arc::new(Mutex::new(handle)),
@@ -50,10 +42,6 @@ impl UsbMTKPort {
             port_name,
             in_endpoint,
             out_endpoint,
-            in_max_packet_size,
-            out_max_packet_size,
-            vid,
-            pid,
         }
     }
 
@@ -148,7 +136,7 @@ impl UsbMTKPort {
 
         let handle = tokio::task::block_in_place(|| device.open().ok())?;
 
-        let (in_endpoint, in_max_packet_size, out_endpoint, out_max_packet_size) =
+        let (in_endpoint, _, out_endpoint, _) =
             Self::find_bulk_endpoints(&device)?;
 
         Some(Self::new(
@@ -158,10 +146,6 @@ impl UsbMTKPort {
             baudrate,
             in_endpoint,
             out_endpoint,
-            in_max_packet_size,
-            out_max_packet_size,
-            vid,
-            pid,
         ))
     }
 }
@@ -213,7 +197,7 @@ impl MTKPort for UsbMTKPort {
             Ok(())
         })
         .await
-        .map_err(|_| Error::io("USB open task failed"))?;
+        .map_err(|_| Error::io("USB open task failed"))??;
 
         // CDC setup is needed for preloader and DA modes
         if self.connection_type != ConnectionType::Brom
@@ -319,7 +303,7 @@ impl MTKPort for UsbMTKPort {
                 return Err(Error::io("USB returned 0 bytes"));
             }
 
-            let expected = !startcmd[i] & 0xFF;
+            let expected = !startcmd[i];
             let handshake_byte = response[n - 1];
 
             if handshake_byte == startcmd[0] {
@@ -359,7 +343,7 @@ impl MTKPort for UsbMTKPort {
     }
 
     fn get_connection_type(&self) -> ConnectionType {
-        self.connection_type.clone()
+        self.connection_type
     }
 
     fn get_baudrate(&self) -> u32 {
@@ -391,11 +375,10 @@ impl MTKPort for UsbMTKPort {
             let vid = descriptor.vendor_id();
             let pid = descriptor.product_id();
 
-            if KNOWN_PORTS.iter().any(|(kvid, kpid, _)| *kvid == vid && *kpid == pid) {
-                if let Some(port) = UsbMTKPort::from_device(device) {
+            if KNOWN_PORTS.iter().any(|(kvid, kpid, _)| *kvid == vid && *kpid == pid)
+                && let Some(port) = UsbMTKPort::from_device(device) {
                     return Ok(Some(port));
                 }
-            }
         }
 
         Ok(None)
