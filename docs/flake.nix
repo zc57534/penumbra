@@ -1,6 +1,6 @@
 {
   description = "Penumbra documentation (with Quartz & Obsidian)";
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
   outputs = {
     self,
@@ -14,6 +14,11 @@
           nodejs_22
           pnpm
         ];
+
+        shellHook = ''
+          echo "Commands:"
+          echo "  npx quartz build --serve  # Build and serve the documentation"
+        '';
       };
   };
 }
