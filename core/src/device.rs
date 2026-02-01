@@ -320,7 +320,6 @@ impl Device {
     }
 
     pub async fn get_partitions(&mut self) -> Vec<Partition> {
-        info!("Retrieving partition information...");
         let cached = self.dev_info.partitions().await;
         if !cached.is_empty() {
             return cached;
@@ -331,6 +330,7 @@ impl Device {
             None => return Vec::new(),
         };
 
+        info!("Retrieving partition information...");
         let partitions = protocol.get_partitions().await;
 
         self.dev_info.set_partitions(partitions.clone()).await;
