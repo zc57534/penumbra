@@ -233,6 +233,6 @@ pub fn create_cmd<C: XmlCommand>(cmd: &C) -> String {
         xml.push_str(&format!("</{}>", tag));
     }
 
-    xml.push_str("</da>");
+    xml.push_str("</da>\u{0}");
     xml
 }
